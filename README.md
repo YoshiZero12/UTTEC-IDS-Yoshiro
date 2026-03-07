@@ -1,6 +1,7 @@
 # 🎓 UTTEC-IDS-Yoshiro
 
 Repositorio central de proyectos y materias de la carrera **Ingeniería en Desarrollo y Gestión de Software (IDS)** en la UTTEC.
+Link web: https://yoshizero12.github.io/UTTEC-IDS-Yoshiro/
 
 ---
 
