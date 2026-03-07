@@ -1,0 +1,1363 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>fsociety — SI · 7IDS3</title>
+  <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet" />
+
+  <!-- ░░ FIREBASE SDK ░░ -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-app.js";
+    import {
+      getFirestore, collection, doc, addDoc, updateDoc, deleteDoc,
+      onSnapshot, query, orderBy, writeBatch, getDocs
+    } from "https://www.gstatic.com/firebasejs/11.0.0/firebase-firestore.js";
+
+    /* ══════════════════════════════════════════════
+       🔑  PEGA AQUÍ TU CONFIG DE FIREBASE
+       (Firebase Console → Project Settings → Your apps)
+    ══════════════════════════════════════════════ */
+    const firebaseConfig = {
+      apiKey: "AIzaSyDjMmne2EKDO7koCdk1BNtRoEwlDfDNZGo",
+      authDomain: "xddd-a9456.firebaseapp.com",
+      projectId: "xddd-a9456",
+      storageBucket: "xddd-a9456.firebasestorage.app",
+      messagingSenderId: "472149612217",
+      appId: "1:472149612217:web:7c4aa67b8d538766102d68",
+      measurementId: "G-W0ZS1S6TJ0"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const col = collection(db, "projects");
+
+    /* ── Proyecto por defecto (primera vez) ── */
+    const DEFAULT_PROJECT = {
+      name: 'Login MD5',
+      desc: 'Sistema de autenticación web con registro e inicio de sesión. Contraseñas cifradas con MD5 antes de guardarse en base de datos. Implementado con Java Servlets en NetBeans.',
+      tags: ['Java Servlets', 'MD5', 'JDBC', 'HTML', 'NetBeans'],
+      icon: '🔐',
+      status: 'done',
+      folder: 'MD5',
+      demo: '',
+      order: 0
+    };
+
+    /* ── Seed si está vacío ── */
+    async function seedIfEmpty() {
+      const snap = await getDocs(col);
+      if (snap.empty) {
+        await addDoc(col, DEFAULT_PROJECT);
+      }
+    }
+
+    /* ── Estado global ── */
+    let projects = [];
+    let editingId = null;
+    let activeFilter = 'all';
+    let dragSrcId = null;
+
+    /* ─────────────────────────────────────────────
+       LISTENER EN TIEMPO REAL — se dispara
+       automáticamente en cada cambio de Firestore
+    ───────────────────────────────────────────── */
+    function startListener() {
+      const q = query(col, orderBy("order", "asc"));
+      onSnapshot(q, (snap) => {
+        projects = snap.docs.map((d, i) => ({ firestoreId: d.id, ...d.data(), order: d.data().order ?? i }));
+        projects.sort((a, b) => a.order - b.order);
+        renderAll();
+        setStatus('online');
+      }, () => setStatus('offline'));
+    }
+
+    /* ─────────────────────────────────────────────
+       CRUD
+    ───────────────────────────────────────────── */
+    async function addProject(data) {
+      data.order = projects.length;
+      await addDoc(col, data);
+    }
+
+    async function editProject(firestoreId, data) {
+      await updateDoc(doc(db, "projects", firestoreId), data);
+    }
+
+    async function removeProject(firestoreId) {
+      await deleteDoc(doc(db, "projects", firestoreId));
+      // Re-number order
+      const snap = await getDocs(col);
+      const batch = writeBatch(db);
+      snap.docs.sort((a, b) => (a.data().order ?? 0) - (b.data().order ?? 0))
+        .forEach((d, i) => batch.update(d.ref, { order: i }));
+      await batch.commit();
+    }
+
+    async function reorderProjects(srcIdx, tgtIdx) {
+      const reordered = [...projects];
+      const [moved] = reordered.splice(srcIdx, 1);
+      reordered.splice(tgtIdx, 0, moved);
+      const batch = writeBatch(db);
+      reordered.forEach((p, i) => batch.update(doc(db, "projects", p.firestoreId), { order: i }));
+      await batch.commit();
+    }
+
+    /* ─────────────────────────────────────────────
+       RENDER
+    ───────────────────────────────────────────── */
+    const GITHUB_BASE = 'https://github.com/YoshiZero12/UTTEC-7IDS3-SI/tree/main/';
+
+    function folderName(n) { return n.trim().replace(/\s+/g, '_').toUpperCase(); }
+
+    function statusHTML(s) {
+      if (s === 'done') return '<span class="card-status status-done">Completado</span>';
+      if (s === 'wip') return '<span class="card-status status-wip">En progreso</span>';
+      return '<span class="card-status status-pending">Próximo</span>';
+    }
+
+    function renderCard(p, idx) {
+      const folder = p.folder || folderName(p.name);
+      const link = GITHUB_BASE + folder;
+      const tags = (p.tags || []).map(t => `<span class="tag">${t}</span>`).join('');
+      const demo = p.demo ? `<a class="btn btn-ghost" href="${p.demo}" target="_blank">Demo</a>` : '';
+      const num = String(idx + 1).padStart(3, '0');
+
+      return `
+      <div class="card" draggable="true" data-fid="${p.firestoreId}" data-idx="${idx}"
+           ondragstart="window._dragStart(event,${idx})" ondragover="window._dragOver(event)"
+           ondrop="window._drop(event,${idx})"   ondragend="window._dragEnd(event)"
+           ondragleave="window._dragLeave(event)"
+           style="animation-delay:${idx * 0.06}s">
+        <span class="drag-handle" title="Arrastra para reordenar">⠿⠿</span>
+        <span class="card-id">SI-${num}</span>
+        <div class="card-icon">${p.icon || '🔑'}</div>
+        ${statusHTML(p.status)}
+        <h3>${p.name}</h3>
+        <p class="card-desc">${p.desc}</p>
+        <div class="tags">${tags}</div>
+        <div class="card-footer">
+          <a class="btn btn-primary" href="${link}" target="_blank">↗ Código</a>
+          ${demo}
+          <button class="btn btn-edit"   onclick="window._openEdit('${p.firestoreId}')">✎ Editar</button>
+          <button class="btn btn-danger" onclick="window._delete('${p.firestoreId}')">✕</button>
+        </div>
+      </div>`;
+    }
+
+    function renderAll() {
+      const grid = document.getElementById('project-grid');
+      if (!grid) return;
+
+      if (projects.length === 0) {
+        grid.innerHTML = `<div class="empty-state"><span class="big">[ VACÍO ]</span>No hay proyectos. Agrega uno con "+ Proyecto".</div>`;
+      } else {
+        grid.innerHTML = projects.map((p, i) => renderCard(p, i)).join('');
+      }
+
+      const done = projects.filter(p => p.status === 'done').length;
+      animCounter('counter-done', done);
+      animCounter('counter-total', projects.length);
+      applyFilters();
+    }
+
+    function animCounter(id, target) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      let v = 0; clearInterval(el._t);
+      el._t = setInterval(() => {
+        v += Math.max(1, Math.ceil(target / 25));
+        if (v >= target) { v = target; clearInterval(el._t); }
+        el.textContent = v;
+      }, 28);
+    }
+
+    /* ── Connection badge ── */
+    function setStatus(s) {
+      const el = document.getElementById('conn-status');
+      if (!el) return;
+      el.textContent = s === 'online' ? '[ ONLINE ]' : '[ OFFLINE ]';
+      el.style.color = s === 'online' ? 'var(--red)' : 'var(--orange)';
+    }
+
+    /* ─────────────────────────────────────────────
+       FILTERS & SEARCH
+    ───────────────────────────────────────────── */
+    function applyFilters() {
+      const q = (document.getElementById('search-input')?.value || '').toLowerCase();
+      document.querySelectorAll('#project-grid .card').forEach(card => {
+        const fid = card.dataset.fid;
+        const proj = projects.find(p => p.firestoreId === fid);
+        if (!proj) return;
+        const matchFilter = activeFilter === 'all' || proj.status === activeFilter;
+        const matchSearch = !q
+          || proj.name.toLowerCase().includes(q)
+          || (proj.tags || []).some(t => t.toLowerCase().includes(q))
+          || proj.desc.toLowerCase().includes(q);
+        card.classList.toggle('hidden', !(matchFilter && matchSearch));
+      });
+    }
+
+    /* ─────────────────────────────────────────────
+       DRAG & DROP
+    ───────────────────────────────────────────── */
+    window._dragStart = (e, idx) => {
+      dragSrcId = idx;
+      e.currentTarget.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    };
+    window._dragOver = (e) => {
+      e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+      const t = e.currentTarget;
+      const tIdx = +t.dataset.idx;
+      if (tIdx !== dragSrcId) t.classList.add('drag-over');
+    };
+    window._dragLeave = (e) => e.currentTarget.classList.remove('drag-over');
+    window._dragEnd = (e) => {
+      e.currentTarget.classList.remove('dragging');
+      document.querySelectorAll('.card').forEach(c => c.classList.remove('drag-over'));
+      dragSrcId = null;
+    };
+    window._drop = async (e, tgtIdx) => {
+      e.preventDefault();
+      e.currentTarget.classList.remove('drag-over');
+      if (dragSrcId === null || dragSrcId === tgtIdx) return;
+      await reorderProjects(dragSrcId, tgtIdx);
+    };
+
+    /* ─────────────────────────────────────────────
+       MODAL
+    ───────────────────────────────────────────── */
+    function openModal(id = null) {
+      editingId = id;
+      document.getElementById('modal-title').textContent = id ? '✎ Editar Proyecto' : '+ Nuevo Proyecto';
+
+      if (id) {
+        const p = projects.find(p => p.firestoreId === id);
+        if (!p) return;
+        document.getElementById('f-name').value = p.name;
+        document.getElementById('f-desc').value = p.desc;
+        document.getElementById('f-tags').value = (p.tags || []).join(', ');
+        document.getElementById('f-icon').value = p.icon || '🔑';
+        document.getElementById('f-status').value = p.status;
+        document.getElementById('f-demo').value = p.demo || '';
+        updatePreview();
+      } else {
+        resetForm();
+      }
+
+      document.getElementById('modal-overlay').classList.add('open');
+      setTimeout(() => document.getElementById('f-name').focus(), 50);
+    }
+
+    function closeModal() {
+      document.getElementById('modal-overlay').classList.remove('open');
+      editingId = null;
+      resetForm();
+    }
+
+    function resetForm() {
+      ['f-name', 'f-desc', 'f-tags', 'f-demo'].forEach(id => document.getElementById(id).value = '');
+      document.getElementById('f-icon').value = '🔑';
+      document.getElementById('f-status').value = 'done';
+      updatePreview();
+    }
+
+    function updatePreview() {
+      const name = document.getElementById('f-name').value.trim();
+      const folder = name ? folderName(name) : '...';
+      document.getElementById('preview-link').textContent =
+        '↗ github.com/YoshiZero12/UTTEC-7IDS3-SI/tree/main/' + folder;
+    }
+
+    async function saveProject() {
+      const name = document.getElementById('f-name').value.trim();
+      const desc = document.getElementById('f-desc').value.trim();
+      if (!name || !desc) { alert('Nombre y descripción son obligatorios.'); return; }
+
+      const tagsRaw = document.getElementById('f-tags').value;
+      const tags = tagsRaw ? tagsRaw.split(',').map(t => t.trim()).filter(Boolean) : [];
+      const data = {
+        name, desc, tags,
+        icon: document.getElementById('f-icon').value || '🔑',
+        status: document.getElementById('f-status').value,
+        folder: folderName(name),
+        demo: document.getElementById('f-demo').value.trim()
+      };
+
+      const currentId = editingId; 
+      closeModal();
+
+      if (currentId) {
+        await editProject(currentId, data); 
+      } else {
+        await addProject(data);
+      }
+    }
+
+    /* ─────────────────────────────────────────────
+       GLOBAL HOOKS (llamados desde HTML inline)
+    ───────────────────────────────────────────── */
+    window._openModal = openModal;
+    window._openEdit = (fid) => openModal(fid);
+    window._delete = async (fid) => {
+      if (!confirm('¿Eliminar este proyecto?')) return;
+      await removeProject(fid);
+    };
+    window._closeModal = closeModal;
+    window._saveProj = saveProject;
+    window._preview = updatePreview;
+    window._applyFilters = applyFilters;
+    window._setFilter = (btn) => {
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeFilter = btn.dataset.filter;
+      applyFilters();
+    };
+
+    /* ─────────────────────────────────────────────
+       INIT
+    ───────────────────────────────────────────── */
+    window.addEventListener('DOMContentLoaded', async () => {
+      await seedIfEmpty();
+      startListener();
+      updatePreview();
+
+      document.getElementById('modal-overlay').addEventListener('click', (e) => {
+        if (e.target === document.getElementById('modal-overlay')) closeModal();
+      });
+      document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+    });
+  </script>
+
+  <style>
+    @font-face {
+      font-family: 'MRRobot';
+      src: url('fonts/MR\ ROBOT.ttf') format('truetype');
+    }
+
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --bg: #0a0202;
+      --surface: #150505;
+      --border: #6e2020;
+      --red: #ff3333;
+      --red-dim: #cc2020;
+      --orange: #e07010;
+      --text: #e8d0d0;
+      --muted: #aa6060;
+      --font-r: 'MRRobot', 'Share Tech Mono', monospace;
+      --font-m: 'Share Tech Mono', monospace;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-m);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Scanlines */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0, 0, 0, 0.1) 2px, rgba(0, 0, 0, 0.1) 4px);
+      pointer-events: none;
+      z-index: 100;
+    }
+
+    /* Vignette */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(ellipse at center, transparent 45%, rgba(0, 0, 0, 0.88) 100%);
+      pointer-events: none;
+      z-index: 99;
+    }
+
+    /* Flicker */
+    #flicker-overlay {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 98;
+      animation: screenFlicker 9s infinite;
+    }
+
+    @keyframes screenFlicker {
+
+      0%,
+      92%,
+      100% {
+        background: transparent;
+      }
+
+      93% {
+        background: rgba(0, 0, 0, 0.04);
+      }
+
+      95% {
+        background: rgba(0, 0, 0, 0.09);
+      }
+
+      96% {
+        background: transparent;
+      }
+
+      97% {
+        background: rgba(0, 0, 0, 0.05);
+      }
+    }
+
+    .container {
+      max-width: 1060px;
+      margin: 0 auto;
+      padding: 0 2rem;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* ── BOOT ── */
+    #boot {
+      position: fixed;
+      inset: 0;
+      background: #000;
+      z-index: 999;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      animation: bootFade 0.4s 2.8s ease forwards;
+    }
+
+    .boot-logo {
+      font-family: var(--font-r);
+      font-size: clamp(3rem, 10vw, 7rem);
+      color: var(--red);
+      text-shadow: 0 0 40px var(--red), 0 0 80px var(--red-dim);
+    }
+
+    .boot-line {
+      font-size: 0.72rem;
+      color: var(--muted);
+      letter-spacing: 0.2em;
+    }
+
+    .boot-bar {
+      width: 220px;
+      height: 2px;
+      background: #1a0000;
+      overflow: hidden;
+      margin-top: 0.5rem;
+    }
+
+    .boot-bar-fill {
+      height: 100%;
+      background: var(--red);
+      box-shadow: 0 0 8px var(--red);
+      animation: bootBar 2.5s ease forwards;
+    }
+
+    @keyframes bootBar {
+      0% {
+        width: 0%
+      }
+
+      30% {
+        width: 40%
+      }
+
+      65% {
+        width: 72%
+      }
+
+      85% {
+        width: 88%
+      }
+
+      100% {
+        width: 100%
+      }
+    }
+
+    @keyframes bootFade {
+      to {
+        opacity: 0;
+        pointer-events: none;
+      }
+    }
+
+    /* ── HEADER ── */
+    header {
+      padding: 4rem 0 2.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .mr-title {
+      font-family: var(--font-r);
+      font-size: clamp(3.5rem, 10vw, 8rem);
+      color: var(--red);
+      line-height: 0.9;
+      text-shadow: 0 0 30px var(--red), 0 0 80px var(--red-dim);
+      display: inline-block;
+    }
+
+    .mr-sub {
+      font-size: 0.72rem;
+      color: var(--muted);
+      letter-spacing: 0.25em;
+      margin-top: 0.75rem;
+      animation: fadeIn 0.5s 3.3s ease both;
+      opacity: 0;
+    }
+
+    .header-bottom {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-top: 2rem;
+      animation: fadeIn 0.5s 3.5s ease both;
+      opacity: 0;
+    }
+
+    .sys-info {
+      font-size: 0.7rem;
+      color: #c08080;
+      line-height: 2;
+    }
+
+    .sys-info span {
+      color: var(--red);
+    }
+
+    .stats {
+      display: flex;
+      gap: 2rem;
+    }
+
+    .stat {
+      text-align: right;
+    }
+
+    .stat-num {
+      font-family: var(--font-r);
+      font-size: 2.5rem;
+      color: var(--red);
+      text-shadow: 0 0 20px var(--red-dim);
+      line-height: 1;
+    }
+
+    .stat-label {
+      font-size: 0.62rem;
+      color: var(--muted);
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      margin-top: 0.2rem;
+    }
+
+    /* ── TERMINAL ── */
+    .terminal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 2px solid var(--red);
+      padding: 1rem 1.5rem;
+      margin: 2rem 0;
+      font-size: 0.76rem;
+      line-height: 1.9;
+      animation: fadeIn 0.5s 3.6s ease both;
+      opacity: 0;
+    }
+
+    .t-line {
+      display: flex;
+      gap: 0.75rem;
+    }
+
+    .t-prompt {
+      color: var(--red);
+      flex-shrink: 0;
+    }
+
+    .t-out {
+      color: #c08080;
+      padding-left: 1.5rem;
+    }
+
+    .t-cursor {
+      display: inline-block;
+      width: 7px;
+      height: 0.85em;
+      background: var(--red);
+      animation: blink 1s step-end infinite;
+      vertical-align: text-bottom;
+    }
+
+    @keyframes blink {
+
+      0%,
+      100% {
+        opacity: 1
+      }
+
+      50% {
+        opacity: 0
+      }
+    }
+
+    /* ── SYNC BADGE ── */
+    .sync-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      font-size: 0.6rem;
+      color: var(--muted);
+      letter-spacing: 0.15em;
+      border: 1px solid var(--border);
+      padding: 0.2rem 0.6rem;
+      animation: fadeIn 0.4s 3.7s ease both;
+      opacity: 0;
+    }
+
+    .sync-dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--red);
+      box-shadow: 0 0 6px var(--red);
+      animation: blink 1.4s ease-in-out infinite;
+    }
+
+    /* ── TOOLBAR ── */
+    .toolbar {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
+      animation: fadeIn 0.5s 3.8s ease both;
+      opacity: 0;
+    }
+
+    .section-label {
+      font-size: 0.66rem;
+      color: #cc4444;
+      letter-spacing: 0.25em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .section-line {
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+      min-width: 20px;
+    }
+
+    .search-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: var(--font-m);
+      font-size: 0.72rem;
+      padding: 0.4rem 0.8rem;
+      outline: none;
+      width: 180px;
+      transition: border-color 0.2s;
+    }
+
+    .search-box::placeholder {
+      color: var(--muted);
+    }
+
+    .search-box:focus {
+      border-color: var(--red-dim);
+    }
+
+    .filters {
+      display: flex;
+      gap: 0.4rem;
+    }
+
+    .filter-btn {
+      font-family: var(--font-m);
+      font-size: 0.62rem;
+      padding: 0.35rem 0.8rem;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      cursor: pointer;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      transition: all 0.2s;
+    }
+
+    .filter-btn:hover {
+      border-color: var(--muted);
+      color: var(--text);
+    }
+
+    .filter-btn.active {
+      background: var(--red);
+      color: #000;
+      border-color: var(--red);
+      font-weight: 700;
+    }
+
+    .btn-add {
+      font-family: var(--font-m);
+      font-size: 0.68rem;
+      padding: 0.4rem 1rem;
+      background: transparent;
+      color: var(--red);
+      border: 1px solid var(--red-dim);
+      cursor: pointer;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      transition: all 0.2s;
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .btn-add:hover {
+      background: var(--red);
+      color: #000;
+      box-shadow: 0 0 20px rgba(255, 51, 51, 0.35);
+    }
+
+    /* ── PROJECTS ── */
+    .projects {
+      padding: 2rem 0 3rem;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      gap: 1.25rem;
+    }
+
+    /* ── CARD ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 1.75rem;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      gap: 0.9rem;
+      transition: border-color 0.3s, box-shadow 0.3s, opacity 0.3s, transform 0.3s;
+      cursor: grab;
+      user-select: none;
+      animation: fadeUp 0.4s ease both;
+    }
+
+    .card:active {
+      cursor: grabbing;
+    }
+
+    .card:hover {
+      border-color: #cc4444;
+      box-shadow: 0 0 30px rgba(255, 51, 51, 0.08), inset 0 0 30px rgba(255, 51, 51, 0.03);
+    }
+
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, var(--red), transparent);
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+
+    .card:hover::before {
+      opacity: 1;
+    }
+
+    .card.dragging {
+      opacity: 0.35;
+      transform: scale(0.97);
+      border-color: var(--red);
+    }
+
+    .card.drag-over {
+      border-color: var(--red);
+      box-shadow: 0 0 20px rgba(255, 51, 51, 0.2);
+      transform: scale(1.02);
+    }
+
+    .card.hidden {
+      display: none;
+    }
+
+    /* ── Ripple on new card ── */
+    .card.just-added {
+      animation: cardPop 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+    }
+
+    @keyframes cardPop {
+      0% {
+        opacity: 0;
+        transform: scale(0.85)
+      }
+
+      100% {
+        opacity: 1;
+        transform: scale(1)
+      }
+    }
+
+    .drag-handle {
+      position: absolute;
+      top: 0.9rem;
+      left: 0.9rem;
+      color: var(--border);
+      font-size: 0.75rem;
+      cursor: grab;
+      letter-spacing: 0.05em;
+      transition: color 0.2s;
+    }
+
+    .card:hover .drag-handle {
+      color: var(--red-dim);
+    }
+
+    .card-id {
+      position: absolute;
+      top: 1rem;
+      right: 1rem;
+      font-size: 0.58rem;
+      color: var(--muted);
+      letter-spacing: 0.1em;
+    }
+
+    .card-icon {
+      font-size: 1.5rem;
+      margin-top: 0.3rem;
+    }
+
+    .card-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      font-size: 0.6rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      padding: 0.2rem 0.6rem;
+      border: 1px solid;
+      width: fit-content;
+    }
+
+    .card-status::before {
+      content: '';
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+    }
+
+    .status-done {
+      color: var(--red);
+      border-color: var(--red-dim);
+      background: rgba(255, 51, 51, 0.06);
+    }
+
+    .status-done::before {
+      background: var(--red);
+      box-shadow: 0 0 6px var(--red);
+    }
+
+    .status-wip {
+      color: var(--orange);
+      border-color: #7a3a00;
+      background: rgba(224, 112, 0, 0.06);
+    }
+
+    .status-wip::before {
+      background: var(--orange);
+      box-shadow: 0 0 6px var(--orange);
+    }
+
+    .status-pending {
+      color: var(--muted);
+      border-color: var(--border);
+    }
+
+    .status-pending::before {
+      background: var(--muted);
+    }
+
+    h3 {
+      font-family: var(--font-r);
+      font-size: 1.5rem;
+      color: #f0dede;
+      letter-spacing: 0.04em;
+    }
+
+    .card-desc {
+      font-size: 0.82rem;
+      color: #c09090;
+      line-height: 1.7;
+    }
+
+    .tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+    }
+
+    .tag {
+      font-size: 0.6rem;
+      color: #c09090;
+      border: 1px solid var(--border);
+      padding: 0.15rem 0.5rem;
+    }
+
+    .card-footer {
+      margin-top: auto;
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      font-family: var(--font-m);
+      font-size: 0.68rem;
+      padding: 0.45rem 0.9rem;
+      cursor: pointer;
+      text-decoration: none;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      transition: all 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      border: 1px solid;
+    }
+
+    .btn-primary {
+      background: var(--red);
+      color: #000;
+      border-color: var(--red);
+      font-weight: 700;
+      box-shadow: 0 0 15px rgba(255, 51, 51, 0.3);
+    }
+
+    .btn-primary:hover {
+      background: #ff5050;
+      box-shadow: 0 0 25px rgba(255, 51, 51, 0.5);
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--muted);
+      border-color: var(--border);
+    }
+
+    .btn-ghost:hover {
+      color: var(--text);
+      border-color: var(--muted);
+    }
+
+    .btn-edit {
+      background: transparent;
+      color: var(--muted);
+      border-color: var(--border);
+      font-size: 0.62rem;
+    }
+
+    .btn-edit:hover {
+      color: var(--orange);
+      border-color: #7a3a00;
+    }
+
+    .btn-danger {
+      background: transparent;
+      color: var(--muted);
+      border-color: var(--border);
+      font-size: 0.62rem;
+    }
+
+    .btn-danger:hover {
+      color: var(--red);
+      border-color: var(--red-dim);
+    }
+
+    .empty-state {
+      grid-column: 1 / -1;
+      text-align: center;
+      padding: 4rem 2rem;
+      color: var(--muted);
+      font-size: 0.8rem;
+      letter-spacing: 0.1em;
+      border: 1px dashed var(--border);
+    }
+
+    .empty-state .big {
+      font-family: var(--font-r);
+      font-size: 2rem;
+      color: var(--border);
+      margin-bottom: 0.5rem;
+      display: block;
+    }
+
+    /* ── MODAL ── */
+    #modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.88);
+      z-index: 500;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+
+    #modal-overlay.open {
+      display: flex;
+    }
+
+    .modal {
+      background: #0e0303;
+      border: 1px solid var(--red-dim);
+      border-top: 2px solid var(--red);
+      padding: 2rem;
+      width: 100%;
+      max-width: 480px;
+      animation: fadeUp 0.25s ease;
+    }
+
+    .modal-title {
+      font-family: var(--font-r);
+      font-size: 1.8rem;
+      color: var(--red);
+      margin-bottom: 1.5rem;
+      text-shadow: 0 0 20px var(--red-dim);
+    }
+
+    .field {
+      margin-bottom: 1rem;
+    }
+
+    .field label {
+      display: block;
+      font-size: 0.64rem;
+      color: var(--muted);
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      margin-bottom: 0.35rem;
+    }
+
+    .field input,
+    .field textarea,
+    .field select {
+      width: 100%;
+      background: #000;
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: var(--font-m);
+      font-size: 0.8rem;
+      padding: 0.55rem 0.85rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    .field input:focus,
+    .field textarea:focus,
+    .field select:focus {
+      border-color: var(--red-dim);
+    }
+
+    .field textarea {
+      resize: vertical;
+      min-height: 80px;
+    }
+
+    .field select option {
+      background: #0e0303;
+    }
+
+    .preview-link {
+      font-size: 0.63rem;
+      color: var(--red-dim);
+      margin-top: 0.35rem;
+      word-break: break-all;
+    }
+
+    .modal-footer {
+      display: flex;
+      gap: 0.75rem;
+      margin-top: 1.5rem;
+      justify-content: flex-end;
+    }
+
+    .btn-cancel {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      font-family: var(--font-m);
+      font-size: 0.68rem;
+      padding: 0.5rem 1rem;
+      cursor: pointer;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .btn-save {
+      background: var(--red);
+      color: #000;
+      border: 1px solid var(--red);
+      font-family: var(--font-m);
+      font-size: 0.68rem;
+      font-weight: 700;
+      padding: 0.5rem 1.2rem;
+      cursor: pointer;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      box-shadow: 0 0 15px rgba(255, 51, 51, 0.3);
+    }
+
+    .btn-save:hover {
+      background: #ff5050;
+    }
+
+    /* ── FOOTER ── */
+    footer {
+      padding: 2rem 0;
+      border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+      font-size: 0.66rem;
+      color: var(--muted);
+    }
+
+    footer a {
+      color: var(--red-dim);
+      text-decoration: none;
+    }
+
+    footer a:hover {
+      color: var(--red);
+    }
+
+    .fsociety-mark {
+      font-family: var(--font-r);
+      font-size: 1.1rem;
+      color: var(--red-dim);
+    }
+
+    /* ── ANIMATIONS ── */
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(8px)
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0)
+      }
+    }
+
+    @keyframes fadeUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px)
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0)
+      }
+    }
+
+    @keyframes glitch {
+      0% {
+        transform: translate(0);
+        text-shadow: 0 0 30px var(--red), 0 0 80px var(--red-dim);
+      }
+
+      25% {
+        transform: translate(-4px, 0);
+        text-shadow: 4px 0 0 #ff5050, -4px 0 0 #aa0000, 0 0 30px var(--red);
+      }
+
+      50% {
+        transform: translate(4px, 0);
+        text-shadow: -4px 0 0 #ff5050, 4px 0 0 #aa0000, 0 0 30px var(--red);
+      }
+
+      75% {
+        transform: translate(-2px, 0);
+        text-shadow: 2px 0 0 #ff5050, 0 0 30px var(--red);
+      }
+
+      100% {
+        transform: translate(0);
+        text-shadow: 0 0 30px var(--red), 0 0 80px var(--red-dim);
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <div id="flicker-overlay"></div>
+
+  <!-- BOOT -->
+  <div id="boot">
+    <div class="boot-logo">fsociety</div>
+    <div class="boot-line">[ INITIALIZING SECURE CONNECTION ]</div>
+    <div class="boot-bar">
+      <div class="boot-bar-fill"></div>
+    </div>
+  </div>
+
+  <!-- MODAL AGREGAR / EDITAR -->
+  <div id="modal-overlay">
+    <div class="modal">
+      <div class="modal-title" id="modal-title">+ Nuevo Proyecto</div>
+
+      <div class="field">
+        <label>Nombre del Proyecto *</label>
+        <input type="text" id="f-name" placeholder="ej. SHA256" oninput="window._preview()" />
+        <div class="preview-link" id="preview-link">↗ github.com/YoshiZero12/UTTEC-7IDS3-SI/tree/main/...</div>
+      </div>
+
+      <div class="field">
+        <label>Descripción *</label>
+        <textarea id="f-desc" placeholder="Breve descripción del proyecto..."></textarea>
+      </div>
+
+      <div class="field">
+        <label>Tecnologías (separadas por coma)</label>
+        <input type="text" id="f-tags" placeholder="ej. Java, SHA256, JDBC, HTML" />
+      </div>
+
+      <div class="field">
+        <label>Ícono</label>
+        <input type="text" id="f-icon" placeholder="ej. 🔑" maxlength="4" value="🔑" />
+      </div>
+
+      <div class="field">
+        <label>Estado</label>
+        <select id="f-status">
+          <option value="done">Completado</option>
+          <option value="wip">En progreso</option>
+          <option value="pending">Próximo</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>Link demo (opcional)</label>
+        <input type="text" id="f-demo" placeholder="https://..." />
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn-cancel" onclick="window._closeModal()">Cancelar</button>
+        <button class="btn-save" onclick="window._saveProj()">↗ Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="container">
+
+    <header>
+      <div class="mr-title" id="main-title">MR. ROBOT</div>
+      <p class="mr-sub">// Seguridad Informática · 7IDS3 · UTTEC</p>
+
+      <div class="header-bottom">
+        <div class="sys-info">
+          <div>USER&nbsp;&nbsp;<span>yoshiro_pablo_armando</span></div>
+          <div>HOST&nbsp;&nbsp;<span>uttec-7ids3.local</span></div>
+          <div>REPO&nbsp;&nbsp;<span>github.com/YoshiZero12/UTTEC-7IDS3-SI</span></div>
+          <div>STATUS <span id="conn-status">[ CONECTANDO... ]</span></div>
+        </div>
+        <div class="stats">
+          <div class="stat">
+            <div class="stat-num" id="counter-done">0</div>
+            <div class="stat-label">Completados</div>
+          </div>
+          <div class="stat">
+            <div class="stat-num" id="counter-total">0</div>
+            <div class="stat-label">Total</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="terminal">
+        <div class="t-line"><span class="t-prompt">root@fsociety:~/SI$</span><span>git log --oneline</span></div>
+        <div class="t-out">1e96544 Primer commit - Proyecto SI 7IDS3</div>
+        <div class="t-out">21 files changed, 2143 insertions(+)</div>
+        <div class="t-line" style="margin-top:0.3rem">
+          <span class="t-prompt">root@fsociety:~/SI$</span>
+          <span><span class="t-cursor"></span></span>
+        </div>
+      </div>
+    </header>
+
+    <section class="projects">
+
+      <!-- TOOLBAR -->
+      <div class="toolbar">
+        <span class="section-label">// exploits</span>
+        <div class="section-line"></div>
+
+        <!-- Sync badge -->
+        <span class="sync-badge"><span class="sync-dot"></span>LIVE · Firebase</span>
+
+        <!-- Search -->
+        <input class="search-box" type="text" id="search-input" placeholder="🔍 buscar..."
+          oninput="window._applyFilters()" />
+
+        <!-- Filters -->
+        <div class="filters">
+          <button class="filter-btn active" data-filter="all" onclick="window._setFilter(this)">Todos</button>
+          <button class="filter-btn" data-filter="done" onclick="window._setFilter(this)">Completados</button>
+          <button class="filter-btn" data-filter="wip" onclick="window._setFilter(this)">En progreso</button>
+          <button class="filter-btn" data-filter="pending" onclick="window._setFilter(this)">Próximos</button>
+        </div>
+
+        <!-- Add -->
+        <button class="btn-add" onclick="window._openModal()">+ Proyecto</button>
+      </div>
+
+      <div class="grid" id="project-grid">
+        <!-- Firestore onSnapshot puebla esto automáticamente -->
+      </div>
+    </section>
+
+    <footer>
+      <span class="fsociety-mark">fsociety</span>
+      <span>Yoshiro Pablo Armando · <a href="https://github.com/YoshiZero12"
+          target="_blank">github.com/YoshiZero12</a></span>
+      <span>UTTEC · ING. EN DESARROLLO Y GESTIÓN DE SOFTWARE</span>
+    </footer>
+
+  </div>
+</body>
+
+</html>
