@@ -3,6 +3,8 @@
  * Click nbfs://nbhost/SystemFileSystem/Templates/JSP_Servlet/Servlet.java to edit this template
  */
 
+import javax.servlet.annotation.MultipartConfig;
+import javax.servlet.http.Part;
 import java.io.IOException;
 import java.io.PrintWriter;
 import javax.servlet.ServletException;
@@ -15,6 +17,7 @@ import javax.servlet.http.HttpServletResponse;
  *
  * @author yrian
  */
+@MultipartConfig
 @WebServlet(urlPatterns = {"/FileServlet"})
 public class FileServlet extends HttpServlet {
 
@@ -69,30 +72,39 @@ public class FileServlet extends HttpServlet {
     @Override
     protected void doPost(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
-        String archivo1 = request.getParameter("archivo-1");
-        String archivo2 = request.getParameter("archivo-2");
 
-        String passwordHash1 = FileUtil.generarSHA256(archivo1);
-        String passwordHash2 = FileUtil.generarSHA256(archivo2);
+        Part filePart1 = request.getPart("archivo-1");
+        Part filePart2 = request.getPart("archivo-2");
 
-        System.out.println("Archivo1: " + archivo1);
-        System.out.println("Password Hash Archivo1: " + passwordHash1);
-        System.out.println("Archivo2: " + archivo2);
-        System.out.println("Password Hash Archivo2: " + passwordHash2);
+        String nombreArchivo1 = filePart1.getSubmittedFileName();
+        String nombreArchivo2 = filePart2.getSubmittedFileName();
 
-        response.getWriter().println("Archivos comparados correctamente.");
+        byte[] bytes1 = filePart1.getInputStream().readAllBytes();
+        byte[] bytes2 = filePart2.getInputStream().readAllBytes();
+
+        String passwordHash1 = FileUtil.generarSHA256(bytes1);
+        String passwordHash2 = FileUtil.generarSHA256(bytes2);
+
+        System.out.println("Archivo1: " + nombreArchivo1);
+        System.out.println("Hash Archivo1: " + passwordHash1);
+        System.out.println("Archivo2: " + nombreArchivo2);
+        System.out.println("Hash Archivo2: " + passwordHash2);
+
         response.setContentType("text/plain");
-        
-        if passwordHash1.equals(passwordHash2){
-            response.getwriter().write("Los hashes son iguales");
+        PrintWriter out = response.getWriter();
+
+        out.println("Archivo 1: " + nombreArchivo1);
+        out.println("Hash SHA-256: " + passwordHash1);
+        out.println("");
+        out.println("Archivo 2: " + nombreArchivo2);
+        out.println("Hash SHA-256: " + passwordHash2);
+        out.println("");
+
+        if (passwordHash1.equals(passwordHash2)) {
+            out.println("Los archivos son IGUALES");
+        } else {
+            out.println("Los archivos son DIFERENTES");
         }
-        
-        response.getWriter().write("Nombre del archivo1: " + archivo1);
-        response.getWriter().write("Hash del archivo1: " + passwordHash1);
-        
-        response.getWriter().write("SHA-256 del archivo2: " + archivo2);
-        response.getWriter().write("Hash del archivo2: " + passwordHash2);
-        
     }
 
     /**
