@@ -1,51 +1,39 @@
 <%@page contentType="text/html" pageEncoding="UTF-8"%>
-<%@page import="java.util.Base64, java.security.PublicKey, java.security.PrivateKey"%>
 <!DOCTYPE html>
 <html>
     <head>
         <meta charset="UTF-8">
-        <title>Resultado RSA</title>
+        <title>Resultado</title>
     </head>
     <body>
+        <% String modo = (String) request.getAttribute("modo"); %>
 
-        <%
-            PublicKey  pubKey  = (PublicKey)  session.getAttribute("publicKey");
-            PrivateKey privKey = (PrivateKey) session.getAttribute("privateKey");
-            String     modo    = (String)     request.getAttribute("modo");
-            String     result  = (String)     request.getAttribute("resultado");
-            boolean    cifrado = "Cifrado RSA".equals(modo);
-        %>
-
-        <h1><%= modo %></h1>
-
-        <% if (cifrado) { %>
-
-            <h3>Llave publica (cifra)</h3>
-            <textarea rows="8" cols="70" readonly>-----BEGIN PUBLIC KEY-----
-<%= Base64.getMimeEncoder(64, new byte[]{'\n'}).encodeToString(pubKey.getEncoded()) %>
------END PUBLIC KEY-----</textarea>
-
-            <h3>Llave privada (descifra)</h3>
-            <textarea rows="8" cols="70" readonly>-----BEGIN PRIVATE KEY-----
-<%= Base64.getMimeEncoder(64, new byte[]{'\n'}).encodeToString(privKey.getEncoded()) %>
------END PRIVATE KEY-----</textarea>
-
-            <h3>Mensaje cifrado</h3>
-            <textarea rows="4" cols="70" readonly><%= result %></textarea>
-
+        <% if ("Cifrado RSA".equals(modo)) { %>
+            
+            <h2>Mensaje enviado con exito</h2>
+            <p>El mensaje esta protegido. Si alguien intercepta el chat, solo vera este texto enredado:</p>
+            
+            <textarea rows="4" cols="70" readonly>${resultado}</textarea>
+            
             <br><br>
-            <a href="DecryptServlet">Descifrar</a>
-            &nbsp;
-            <a href="index.jsp">Cifrar otro</a>
+            <a href="index.jsp">Escribir otro mensaje</a>
+            <br><br>
+            <hr>
+            <a href="novia.jsp">Revisar como lo ve ella -></a>
+
+        <% } else if ("Descifrado RSA".equals(modo)) { %>
+            
+            <h2>Mensaje revelado</h2>
+            <p>Usaste tu Llave Privada. El mensaje original de tu novio es:</p>
+            
+            <textarea rows="4" cols="70" readonly style="border: 2px solid black;">${resultado}</textarea>
+            
+            <br><br>
+            <a href="novia.jsp">Volver a tu buzon</a>
 
         <% } else { %>
-
-            <h3>Mensaje descifrado</h3>
-            <textarea rows="4" cols="70" readonly><%= result %></textarea>
-
-            <br><br>
-            <a href="index.jsp">Cifrar otro mensaje</a>
-
+            <p>Ocurrio un error.</p>
+            <a href="index.jsp">Volver al inicio</a>
         <% } %>
 
     </body>
