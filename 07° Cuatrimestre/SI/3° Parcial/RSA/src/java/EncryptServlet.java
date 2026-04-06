@@ -70,14 +70,12 @@ public class EncryptServlet extends HttpServlet {
         String mensaje = request.getParameter("mensaje");
 
         try {
-            // Generar el par de llaves y guardarlo en sesión
             KeyPair keyPair = RSAUtil.generateKeyPair();
 
             HttpSession session = request.getSession();
             session.setAttribute("publicKey", keyPair.getPublic());
             session.setAttribute("privateKey", keyPair.getPrivate());
 
-            // Cifrar con la llave pública
             String cifrado = RSAUtil.encrypt(mensaje, keyPair.getPublic());
             session.setAttribute("mensajeCifrado", cifrado);
 
