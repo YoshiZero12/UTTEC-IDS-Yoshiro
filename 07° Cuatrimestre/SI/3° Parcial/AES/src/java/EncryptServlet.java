@@ -84,8 +84,8 @@ public class EncryptServlet extends HttpServlet {
             request.setAttribute("resultado", cifrado);
             request.getRequestDispatcher("resultado.jsp").forward(request, response);
             
-        } catch (Excpetion e) {
-            throe new ServletException (e);
+        } catch (Exception e) {
+            throw new ServletException (e);
         }
     }
 

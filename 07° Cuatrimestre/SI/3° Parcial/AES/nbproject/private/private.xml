@@ -3,11 +3,11 @@
     <editor-bookmarks xmlns="http://www.netbeans.org/ns/editor-bookmarks/2" lastBookmarkId="0"/>
     <open-files xmlns="http://www.netbeans.org/ns/projectui-open-files/2">
         <group>
-            <file>file:/C:/Users/CA06-7/Documents/NetBeansProjects/AES/web/resultado.jsp</file>
-            <file>file:/C:/Users/CA06-7/Documents/NetBeansProjects/AES/src/java/DecryptServlet.java</file>
-            <file>file:/C:/Users/CA06-7/Documents/NetBeansProjects/AES/src/java/EncryptServlet.java</file>
-            <file>file:/C:/Users/CA06-7/Documents/NetBeansProjects/AES/src/java/AESUtil.java</file>
-            <file>file:/C:/Users/CA06-7/Documents/NetBeansProjects/AES/web/index.jsp</file>
+            <file>file:/C:/Users/yrian/Documents/Software-Proyectos/Apps%20Web/UTTEC-IDS-Yoshiro/07°%20Cuatrimestre/SI/3°%20Parcial/AES/web/index.jsp</file>
+            <file>file:/C:/Users/yrian/Documents/Software-Proyectos/Apps%20Web/UTTEC-IDS-Yoshiro/07°%20Cuatrimestre/SI/3°%20Parcial/AES/web/resultado.jsp</file>
+            <file>file:/C:/Users/yrian/Documents/Software-Proyectos/Apps%20Web/UTTEC-IDS-Yoshiro/07°%20Cuatrimestre/SI/3°%20Parcial/AES/src/java/AESUtil.java</file>
+            <file>file:/C:/Users/yrian/Documents/Software-Proyectos/Apps%20Web/UTTEC-IDS-Yoshiro/07°%20Cuatrimestre/SI/3°%20Parcial/AES/src/java/DecryptServlet.java</file>
+            <file>file:/C:/Users/yrian/Documents/Software-Proyectos/Apps%20Web/UTTEC-IDS-Yoshiro/07°%20Cuatrimestre/SI/3°%20Parcial/AES/src/java/EncryptServlet.java</file>
         </group>
     </open-files>
 </project-private>
